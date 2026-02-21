@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./data:/app/data
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CHROMA_DB_PATH=/app/data/chroma
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    depends_on:
+      - redis
+      - chromadb
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  chromadb:
+    image: chromadb/chroma
+    ports:
+      - "8008:8000"
+    volumes:
+      - ./data/chroma:/chroma/chroma
