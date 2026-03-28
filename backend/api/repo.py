@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from backend.services.repo_service import RepoService
 from backend.services.rag_service import RAGService
+from backend.services.tree_rag_service import RepoTreeBuilder
 from backend.utils.auth import get_session_id, create_session
 from backend.utils.limiter import limiter
 import logging
@@ -38,7 +39,7 @@ async def load_repo(repo_request: RepoLoadRequest, request: Request):
         logger.error(f"Failed to load repo {repo_request.url}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-def background_process_repo(session_id: str, extensions: List[str]):
+async def background_process_repo(session_id: str, extensions: List[str]):
     try:
         logger.info(f"Starting background processing for session {session_id}")
         processing_status[session_id] = "processing"
@@ -51,6 +52,11 @@ def background_process_repo(session_id: str, extensions: List[str]):
         docs = repo_service.process_files(extensions)
         summaries = repo_service.generate_summaries(docs)
         rag_service.add_documents(summaries)
+        
+        # Build Tree-Based RAG
+        logger.info(f"Building summary tree for session {session_id}")
+        tree_builder = RepoTreeBuilder(session_id)
+        await tree_builder.build()
         
         processing_status[session_id] = "completed"
         logger.info(f"Successfully processed repo for session {session_id}")

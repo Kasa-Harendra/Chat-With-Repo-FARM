@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     EMBEDDING_MODEL: str = "embeddinggemma:latest"
     CHAT_MODEL: str = "gpt-oss:20b"
+    SUMMARIZER_MODEL: str = "llama3.2:3b"
+    SEARCHER_MODEL: str = "llama3.2:3b"
     
     # Security
     SECRET_KEY: str = "chat-with-repo-production"

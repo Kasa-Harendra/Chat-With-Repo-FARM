@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from backend.services.rag_service import RAGService
+from backend.services.tree_rag_service import TreeSearchService
 from backend.services.cache_service import CacheService
 from backend.utils.auth import get_session_id
 from backend.utils.limiter import limiter
@@ -53,33 +54,37 @@ async def chat(chat_request: ChatRequest, request: Request):
         raise HTTPException(status_code=400, detail="Session not initialized")
         
     rag_service = RAGService(session_id)
+    tree_search = TreeSearchService(session_id)
     cache_service = CacheService(session_id)
     
-    # Query for top 3 summaries
-    summaries = rag_service.query(chat_request.message, k=3)
+    # Query for relevant files using Tree Search
+    logger.info(f"Performing tree search for query: {chat_request.message}")
+    context_files = await tree_search.query_tree(chat_request.message)
     
-    context_files = []
     repo_path = os.path.join(settings.DATA_PATH, session_id)
     
     if not os.path.exists(repo_path):
         logger.warning(f"Repository path {repo_path} not found for session {session_id}")
     else:
-        for doc in summaries:
-            source = doc.metadata.get("source")
-            if not source:
-                continue
-                
-            file_path = os.path.join(repo_path, source)
-            try:
-                if os.path.exists(file_path):
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        content = f.read()
-                    context_files.append({
-                        "source": source,
-                        "content": content
-                    })
-            except Exception as e:
-                logger.error(f"Error reading context file {file_path}: {e}")
+        # If Tree search found nothing or we want to fallback (keeping existing logic for now but context_files is already populated)
+        if not context_files:
+            logger.info("Tree search yielded no results, falling back to flat RAG summaries")
+            summaries = rag_service.query(chat_request.message, k=3)
+            for doc in summaries:
+                source = doc.metadata.get("source")
+                if not source:
+                    continue
+                file_path = os.path.join(repo_path, source)
+                try:
+                    if os.path.exists(file_path):
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            content = f.read()
+                        context_files.append({
+                            "source": source,
+                            "content": content
+                        })
+                except Exception as e:
+                    logger.error(f"Error reading context file {file_path}: {e}")
     
     context_text = "\n\n".join([f"File: {f['source']}\nContent:\n{f['content']}" for f in context_files])
     
